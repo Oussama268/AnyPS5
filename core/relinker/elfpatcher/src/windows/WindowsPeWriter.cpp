@@ -39,13 +39,15 @@ std::vector<std::uint8_t> WindowsPeWriter::Write(const std::vector<PeSection>& s
     std::uint32_t endRva = LoadRva;
     std::uint32_t codeSize = 0;
     std::uint32_t dataSize = 0;
+    bool foundCode = false;
     bool foundEntry = false;
     for (std::size_t index = 0; index < sections.size(); ++index) {
         const auto& section = sections[index];
         if (section.Name.empty() || section.Name.size() > 8 || section.Data.empty() || section.Rva != endRva)
             throw Domain::RelinkerException("Invalid PE section layout: " + section.Name, section.Rva);
-        const auto rawSize = Io::AlignUp(CheckedRva(section.Data.size()), FileAlignment);
-        const auto rawOffset = CheckedRva(result.size());
+        const auto initialized = static_cast<std::size_t>(std::find_if(section.Data.rbegin(), section.Data.rend(), [](const std::uint8_t value) { return value != 0; }).base() - section.Data.begin());
+        const auto rawSize = Io::AlignUp(CheckedRva(initialized), FileAlignment);
+        const auto rawOffset = rawSize == 0 ? 0u : CheckedRva(result.size());
         const auto header = sectionTable + index * 40;
         std::copy(section.Name.begin(), section.Name.end(), result.begin() + static_cast<std::ptrdiff_t>(header));
         Io::WriteU32(result, header + 8, CheckedRva(section.Data.size()));
@@ -54,15 +56,18 @@ std::vector<std::uint8_t> WindowsPeWriter::Write(const std::vector<PeSection>& s
         Io::WriteU32(result, header + 20, rawOffset);
         Io::WriteU32(result, header + 36, section.Characteristics);
         if ((section.Characteristics & SectionExecute) != 0) {
-            if (codeSize == 0)
+            if (!foundCode)
                 Io::WriteU32(result, optionalOffset + 20, section.Rva);
+            foundCode = true;
             codeSize = CheckedRva(static_cast<std::uint64_t>(codeSize) + rawSize);
             foundEntry |= entryRva >= section.Rva && entryRva - section.Rva < section.Data.size();
         } else {
             dataSize = CheckedRva(static_cast<std::uint64_t>(dataSize) + rawSize);
         }
-        result.insert(result.end(), section.Data.begin(), section.Data.end());
-        result.resize(static_cast<std::size_t>(rawOffset) + rawSize);
+        if (rawSize != 0) {
+            result.insert(result.end(), section.Data.begin(), section.Data.begin() + static_cast<std::ptrdiff_t>(initialized));
+            result.resize(static_cast<std::size_t>(rawOffset) + rawSize);
+        }
         endRva = AlignRva(section.Rva + static_cast<std::uint64_t>(section.Data.size()));
     }
     if (!foundEntry)
