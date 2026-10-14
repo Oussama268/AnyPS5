@@ -1,0 +1,3 @@
+- [User dev environment](user-dev-environment.md) — Mac (relinker only) then Windows x86-64 PC from 2026-10-14 for full builds and game testing; fork Oussama268/AnyPS5
+- [Run steps directly](run-steps-directly.md) — execute commands instead of listing them; still confirm upstream-facing actions
+- [Upstream PR limit](upstream-pr-limit.md) — 1 open upstream PR with 0 merged, 20 with 1+; search for duplicates right before starting and posting
